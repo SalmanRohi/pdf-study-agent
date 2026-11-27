@@ -7,8 +7,7 @@ import streamlit as st
 from groq import Groq
 
 # If Groq retires this model, change this one line.
-MODEL_NAME = "llama-3.3-70b-versatile"
-RETRIES = 2
+MODEL_NAME = "llama-3.1-8b-instant"
 
 
 def get_api_key() -> str | None:
