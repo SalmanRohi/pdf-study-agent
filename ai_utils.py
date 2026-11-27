@@ -1,27 +1,22 @@
-"""Sends the question and retrieved PDF passages to Gemini, with retries and fallback models."""
+"""Sends the question and retrieved PDF passages to Groq."""
 
 import os
 import time
 
 import streamlit as st
-from google import genai
+from groq import Groq
 
-# The app tries these models in order. If one is busy or unavailable, it moves to the next.
-MODEL_NAMES = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-3.8-flash",
-]
-
-RETRIES_PER_MODEL = 3
+# If Groq retires this model, change this one line.
+MODEL_NAME = "llama-3.3-70b-versatile"
+RETRIES = 2
 
 
 def get_api_key() -> str | None:
     """Read the key from Streamlit secrets (online) or an environment variable (local)."""
     try:
-        return st.secrets["GEMINI_API_KEY"]
+        return st.secrets["GROQ_API_KEY"]
     except Exception:
-        return os.environ.get("GEMINI_API_KEY")
+        return os.environ.get("GROQ_API_KEY")
 
 
 def build_prompt(question: str, passages: list[dict]) -> str:
@@ -49,7 +44,7 @@ def ask_with_context(question: str, passages: list[dict]) -> str:
     api_key = get_api_key()
     if not api_key:
         raise RuntimeError(
-            "No Gemini API key found. Add GEMINI_API_KEY in the app's Secrets settings."
+            "No Groq API key found. Add GROQ_API_KEY in the app's Secrets settings."
         )
 
     if not passages:
@@ -58,25 +53,20 @@ def ask_with_context(question: str, passages: list[dict]) -> str:
             "Try different keywords, or check whether the topic is in the documents."
         )
 
+    client = Groq(api_key=api_key)
     prompt = build_prompt(question, passages)
-    client = genai.Client(api_key=api_key)
+
     last_error = None
-
-    for model_name in MODEL_NAMES:
-        for attempt in range(RETRIES_PER_MODEL):
-            try:
-                response = client.models.generate_content(model=model_name, contents=prompt)
-                if response.text:
-                    return response.text
-                last_error = "The model returned an empty answer."
-            except Exception as error:
-                last_error = f"{model_name}: {error}"
-                message = str(error)
-                busy = "503" in message or "429" in message or "UNAVAILABLE" in message
-                if not busy:
-                    # A different kind of error (for example, a wrong model name).
-                    # Skip the remaining retries and try the next model.
-                    break
-            time.sleep(2 * (attempt + 1))  # wait 2s, then 4s, then 6s
-
-    raise RuntimeError(f"All Gemini models are busy or unavailable. Last error: {last_error}")
+    for attempt in range(RETRIES + 1):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[{"role": "user", "content": prompt}],
+            )
+            answer = response.choices[0].message.content
+            return answer or "The model returned an empty answer. Please try again."
+        except Exception as error:
+            last_error = error
+            if attempt < RETRIES:
+                time.sleep(2)  # short pause, then one more try
+    raise RuntimeError(f"Groq did not answer: {last_error}")
