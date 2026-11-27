@@ -8,6 +8,7 @@ from groq import Groq
 
 # If Groq retires this model, change this one line.
 MODEL_NAME = "llama-3.1-8b-instant"
+RETRIES = 2
 
 
 def get_api_key() -> str | None:
